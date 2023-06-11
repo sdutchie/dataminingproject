@@ -1,0 +1,1225 @@
+---
+title: "Ames Housing Final Project"
+date: "Last updated on `r Sys.Date()`"
+author: "Group E: Lidia Ortiz-Zamora (mortizza), Shannon Dutchie (sdutchie), Jay Aswani (aaswani)"
+output: 
+  html_document:
+    fig_width: 8
+    fig_height: 6
+---
+
+```{r Loading Packages, echo=FALSE, message=FALSE, warning=FALSE}
+library(ggplot2)
+library(tidyr)
+library(dplyr)
+library(ggcorrplot)
+library(ggthemes) 
+library(hrbrthemes)
+library(viridis)
+library(leaps)
+library(boot) 
+library(MASS)
+library(glmnet)
+library(ggpubr)
+library(gridExtra)
+library(knitr)
+library(boot)
+library(gam)
+library(GGally) 
+library(plotly)
+library(tidyverse)
+library(scales)
+library(splines)
+library(plyr)
+options(scipen=10000)
+```
+
+```{r loading data, message=TRUE, warning=FALSE, echo = FALSE}
+AmesHousing <- read.csv("AmesHousing.csv")
+```
+
+```{r Changing column names, message=FALSE, warning=FALSE, echo = FALSE}
+#changing column names
+colnames(AmesHousing)[3] <- c("home_type")
+colnames(AmesHousing)[6] <- c("lot_area")
+colnames(AmesHousing)[19] <- c("overall_qual")
+colnames(AmesHousing)[21] <- c("year_built")
+colnames(AmesHousing)[51] <- c("full_bath_abv_grd")
+colnames(AmesHousing)[56] <- c("tot_rms_abv_grd")
+colnames(AmesHousing)[82] <- c("saleprice")
+```
+
+
+
+```{r Recoding Variables, message=FALSE, warning=FALSE, echo = FALSE}
+AmesHousing$home_type <- recode(AmesHousing$home_type, 
+       `020` = "1-STORY 1946 & NEWER ALL STYLES", 
+       `030` = "1-STORY 1945 & OLDER", 
+       `040` = "1-STORY W/FINISHED ATTIC ALL AGES", 
+       `045` = "1-1/2 STORY - UNFINISHED ALL AGES", 
+       `050` = "1-1/2 STORY FINISHED ALL AGES", 
+       `060` = "2-STORY 1946 & NEWER", 
+       `070` = "2-STORY 1945 & OLDER",
+       `075` = "2-1/2 STORY ALL AGES",
+       `080` = "SPLIT OR MULTI-LEVEL", 
+       `085` = "SPLIT FOYER", 
+       `090` = "DUPLEX - ALL STYLES AND AGES", 
+       `120` = "1-STORY PUD - 1946 & NEWER", 
+       `150` = "1-1/2 STORY PUD - ALL AGES", 
+       `160` = "2-STORY PUD - 1946 & NEWER",
+       `180` = "PUD - MULTILEVEL - INCL SPLIT LEV/FOYER",
+       `190` = "2 FAMILY CONVERSION - ALL STYLES AND AGES",
+       .default = NULL)
+AmesHousing$Fence <- recode(AmesHousing$Fence, 
+            `GdPrv` =  "Good Privacy",
+            `MnPrv`  =  "Minimum Privacy",
+            `GdWo`   =  "GoodWood", 
+            `MnWw`   = "Minimum Wood/Wire", 
+            .default = NULL)
+
+AmesHousing<-AmesHousing%>%
+  mutate(Fence = ifelse(is.na(Fence), "No Fence", Fence))
+AmesHousing$Land.Slope <- recode(AmesHousing$Land.Slope, 
+            `Gtl` =  "Gentle Slope",
+            `Mod`  =  "Moderate Slop",
+            `Sev`   =  "Severe", 
+            .default = NULL)
+AmesHousing$Street <- recode(AmesHousing$Street, 
+            `Grvl` =  "Gravel",
+            `Pave`  =  "Paved",
+            .default = NULL)
+AmesHousing$Kitchen.Qual <- recode(AmesHousing$Kitchen.Qual, 
+            `Ex` =  5,
+            `Gd` =  4,
+            `TA` =  3,
+            `Fa` =  2,
+            `Po` =  1, 
+            .default = NULL)
+AmesHousing$Neighborhood <- recode(AmesHousing$Neighborhood, 
+       `Blmngtn` = "Bloomington Heights", 
+       `Blueste` = "Bluestem", 
+       `BrDale` = "Briardale", 
+       `BrkSide` = "Brookside", 
+       `ClearCr` = "Clear Creek", 
+       `CollgCr` = "College Creek",
+       `Crawfor` = "Crawford",
+       `Edwards` = "Edwards",
+       `Gilbert` = "Gilbert", 
+       `IDOTRR` = "Iowa DOT and Rail Road", 
+       `MeadowV` = "Meadow Village", 
+       `Mitchel` = "Mitchell", 
+       `Names` = "North Ames", 
+       `NoRidge` = "Northridge",
+       `NPkVill` = "Northpark Villa",
+       `NridgHt` = "Northridge Heights",
+       `NWAmes` = "Northwest Ames",
+       `OldTown` = "Old Town",
+       `SWISU` = "South & West Iowa State University",
+       `Sawyer` = "Sawyer",
+       `SawyerW` = "Sawyer West",
+       `Somerst` = "Somerset",
+       `StoneBr` = "Stone Brook",
+       `Timber` = "Timberland",
+       `Veenker` = "Veenker",
+       .default = NULL)
+
+AmesHousing$Garage.Qual<- recode(AmesHousing$Garage.Qual,
+            `Ex` =  5,
+            `Gd` = 4,
+            `TA` = 3,
+            `Fa` = 2,
+            `Po` = 1,
+            .default = NULL)
+
+AmesHousing$Exterior.1st <- recode(AmesHousing$Exterior.1st,
+       `AsbShng` = "Asbestos Shingles",
+       `Wd Sdng` = "Asphalt Shingles",
+       `BrkComm` = "Brick Common",
+       `BrkFace` = "Brick Face",
+       `CBlock` = "Cinder Black",
+       `CemntBd` = "Cement Board",
+       `HdBoard` = "Hard Board",
+       `ImStucc` = "Imitation Stucco",
+       `MetalSd` = "Metal Siding",
+       `Other` = "Other",
+       `Plywood` = "Plywood",
+       `PreCast` = "PreCast",
+       `Stone` = "Stone",
+       `Stucco` = "Stucco",
+       `VinylSd` = "Vinyl Siding",
+       `Wd Sdng` = "Wood Siding",
+       `WdShing` = "Wood Shingles",
+       .default = NULL)
+
+AmesHousing$Foundation <- recode(AmesHousing$Foundation,
+       `Wood` = "Wood",
+       `Stone` = "Stone",
+       `Slab` = "Slab",
+       `PConc` = "Poured Concrete",
+       `CBlock` = "Cinder Block",
+       `BrkTil` = "Brick & Tile",
+       .default = NULL)
+
+AmesHousing$Heating.QC <- recode(AmesHousing$Heating.QC,
+            `Ex` =  5,
+            `Gd`  = 4,
+            `TA`   = 3,
+            `Fa`   = 2,
+            `Po` = 1,
+            .default = NULL)
+
+AmesHousing$Bsmt.Qual <- recode(AmesHousing$Bsmt.Qual, 
+            `Ex` =  100,
+            `Gd`  =  90,
+            `TA`   =  80, 
+            `FA`   = 70,
+            `Po`   = 35,
+            `NA`   = 0,
+            .default = NULL)
+```
+
+# Introduction 
+
+The aim of this project is to: (1) build a sales price prediction model using a training data filled set of houses from 2006-2009 within the Ames Housing data set; (2) Use this model to predict sales price for a testing data set of houses from 2010 within the Ames Housing data set; (3) Apply this model to the creation of a renovation calculator that estimates the added value to a house when certain renovations are made.
+
+In determining the model that will be used in the creation of the renovation calculator, we’ll first determine which variables would be the best predictors of sale price and then apply that chosen subset of variables to various models. We can then compare the performance of the various models and choose the one with the best performance. The model with the best performance will help us examine how the sale price will change if a home had renovated their kitchen, bathroom, basement, or roof.
+
+This project used data from 1500 residential property sales in Ames, Iowa between 2006 and 2012. There are 82 explanatory variables in the data set, containing -  nominal, ordinal, discrete, and continuous attributes.  Continuous variables provide information about the multiple area dimensions of the house and property, such as the size of the lot, garage among others. Discrete variables, on the other hand, quantify characteristics of the house/properties like the number of kitchens, baths, bedrooms, and parking spots. Nominal variables, generally, describe the multiple types of materials and locations, such as the name of the neighborhood or the type of foundations. Ordinal variables typically rate the condition and quality of multiple house characteristics  and utilities. 
+
+
+
+# Exploratory Data Analysis 
+
+Prior to doing the exploratory data analysis, we hypothesize that the following variables will be the most predictive of home price: lot area, home type, year built, and overall quality. We think these will be the most predictive because we assume that if we were to be in the market for a home, these would be among the top criteria we would consider when deciding which home to purchase.
+
+Furthermore, we also hypothesize that a generalized additive model (GAM) will be the best model to use. We think so because the GAM will be able to combine the strengths of various different other model types including polynomials, cubic splines, and smoothing splines. 
+
+### Exploring Selected Home Characteristics in the Dataset
+
+
+Since our goal is to predict sale price, we first looked at the distribution of sale price in our data set. 
+
+```{r sale price distribution, warning = FALSE, echo = FALSE, message = FALSE}
+
+SalePrice<-ggplot(AmesHousing, aes(x=saleprice)) + 
+  geom_histogram( fill="darkred") +
+  theme(legend.position = "none") +
+  xlab("Sale Price") +
+  ylab("Count ") +
+  ggtitle("Figure 1: Sale Price Distribution")
+
+SalePrice
+```
+What we observe from **Figure 1** is that the distribution for sale price is right skewed. There a few houses with in the data set that tend to have relatively high prices. This is a limitation that we will further discuss in our limitation section of our discussion. We then proceed to analysis trend data for sale price. More, specifically, we explored how sale price varied acrous the year houses were sold. 
+
+```{r year sold vs sale price, echo=FALSE, warning=FALSE, message=FALSE}
+
+ggplotly(AmesHousing %>%
+  ggplot( aes(x = year_built, y=saleprice)) +
+    geom_point(color=rgb(0.1,0.4,0.5,0.7))+ 
+    theme(legend.position = "none") +
+   xlab("Year Sold") +
+    ylab("Sale Price") +
+    scale_y_continuous(labels = dollar)+
+    ggtitle("Figure 2: Home Price Over Time")+
+    geom_smooth(method = "lm", formula = y ~ poly(x, 3), aes(colour = "Cubic fit")))
+
+
+
+
+
+```
+
+
+**Figure 2.** allows us to see that the relationship between year sold and sale price is linear. Overall, it seems that there is an upward trend in sale price since the 1940s. We can also observe outliers across time. Our next step in our exploratory data analysis is to explore the variables we hypothesize will be strong predictors of price. We began by first exploring the variables themselves and then explore the relationship between these variables and sale price.
+
+
+
+```{r Counts by lot area, echo=FALSE, warning=FALSE, message=FALSE, out.width="800px", out.height="00px"}
+count_lotA<-ggplot(AmesHousing, aes(x=lot_area)) + 
+  geom_histogram(binwidth=500, fill="darkred") +
+  theme(legend.position = "none") +
+  xlab("Lot Area") +
+  ylab("Count of Homes") +
+  ggtitle("Figure 3: Count of Homes by Lot Area")
+outlier.no <- length(boxplot.stats(AmesHousing$lot_area)$out)
+outlier.sum <- summary(boxplot.stats(AmesHousing$lot_area)$out)
+lot_area.outlier.rm <- filter(AmesHousing, lot_area < 17755)
+
+
+count_lotA_2<- ggplot(lot_area.outlier.rm, aes(x=lot_area)) + 
+  geom_histogram(binwidth=500, fill="darkred") +
+  theme(legend.position = "none") +
+  xlab("Lot Area") + 
+  ggtitle(" ")
+library(cowplot)
+plot_grid(count_lotA, count_lotA_2)
+#https://stackoverflow.com/questions/1249548/side-by-side-plots-with-ggplot2
+```
+
+When it comes to lot area, this dataset has many outliers as shown above. We found that there were `r outlier.no` outliers greater than the minimum outlier value of `r outlier.sum[1]`. As these made visualization difficult, we temporarily removed them.
+After removing the outliers, we can see that homes have a somewhat normal distribution in terms of lot area near the median of `r summary(AmesHousing$lot_area)[3]` square feet.
+
+
+```{r Counts by home type, message=FALSE, warning=FALSE, echo = FALSE}
+AmesHousing <- within(AmesHousing, home_type <- factor(home_type, levels=names(sort(table(home_type), decreasing=TRUE))))
+# https://stackoverflow.com/questions/5208679/order-bars-in-ggplot2-bar-graph
+ ggplotly(ggplot(AmesHousing, aes(x=home_type)) + 
+  geom_bar(stat="count", fill="darkred") +
+  theme(axis.text.x=element_text(angle=-90, hjust=0)) +
+  theme(legend.position = "none") +
+  xlab("Type of Home") +
+  ylab("Count") +
+  ggtitle("Figure 4: Count of Home Type"))
+```
+
+From **Figure 3**, we see that 1-story homes that were built in 1946 or later make up the bulk of our dataset, specifically `r nrow(filter(AmesHousing, home_type=="1-STORY 1946 & NEWER ALL STYLES"))`. This is over one-third of our total dataset which has `r nrow(AmesHousing)` observations. Please not that the graphs are interactive so move your cursor over the graph to see more details.
+
+```{r counts by year built, echo=FALSE, warning=FALSE, message=FALSE}
+ggplotly(ggplot(AmesHousing, aes(x=year_built)) + 
+  geom_histogram(binwidth=5, fill="darkred") +
+  theme(legend.position = "none") +
+  xlab("Year Built (5 Year Increments)") +
+  ylab("Count of Homes") +
+  ggtitle("Figure 5: Count of Homes by Year Built"))
+```
+
+Furthermore, we can also observe from **Figure 4**, that most homes were built within a 5 year time range of 2005. 
+
+
+
+
+Exploring kitchen quality, from the table below, we can observe that the mean kitchen quality in this data is 3.51. 
+
+
+```{r, echo = FALSE, echo=FALSE, warning=FALSE, message=FALSE}
+
+as.table(summary(AmesHousing$Kitchen.Qual))
+
+
+```
+
+
+
+## Relationship Between Sale Price and Selected Characteristics 
+
+
+```{r Saleprice distribution Neighborhood, message=FALSE, warning=FALSE, echo=FALSE, out.width="800px", out.height="800px"}
+  
+ggplotly(AmesHousing %>%
+  ggplot( aes(x=reorder(Neighborhood, saleprice, FUN = median), y=saleprice)) +
+    scale_fill_viridis(discrete = TRUE, alpha=0.5) +
+    geom_jitter(color=rgb(0.1,0.4,0.5,0.7), size=0.4, alpha=0.5) +
+   geom_boxplot(fill = rgb(0.1,0.4,0.5,0.7)) +
+    theme(
+      legend.position="none",
+      plot.title = element_text(size=11)
+    ) +
+    ggtitle("Figure 6: Sale Price vs. Neighborhood") +
+    xlab("Neighborhood") +
+    ylab("Sale Price")+
+    scale_y_continuous(labels = dollar)+
+  theme(plot.title = element_text(hjust = 0.5),axis.text.x =  element_text(angle = -90)))
+#reorder(Species, Sepal.Width, FUN = median)
+```
+
+
+We can observe  from **Figure 5** that there is a large variation in sale price across across different neighborhoods. Even within neighborhood we also see variation. Investigating some housing characteristics may give us insight into the variation observed in price within neighborhoods.
+
+```{r saleprice distribution x overal q, echo=FALSE, warning=FALSE, message=FALSE, out.width="805px", out.height="600px"}
+graph6<- ggplot(AmesHousing, aes(overall_qual, saleprice)) + 
+  geom_point(stat="identity", color=rgb(0.1,0.4,0.5,0.7)) +
+  theme(legend.position = "none") +
+  xlab("Overall Quality (10 is Best)") +
+  ylab("Average Sale Price") +
+  scale_y_continuous(labels = dollar)+
+  ggtitle("Figure 7: Home Price By Overall Quality") +
+  geom_smooth()
+
+graph7<- ggplot(AmesHousing, aes(year_built, saleprice)) + 
+  geom_point(stat="identity", color=rgb(0.1,0.4,0.5,0.7)) +
+  theme(legend.position = "none") +
+  xlab("Year Built") +
+  ylab("Average Sale Price") +
+  scale_y_continuous(labels = dollar)+
+  ggtitle("Figure 8: Avg. Home Price by Year Built") +
+  geom_smooth(method=lm)
+plot_grid(graph6, graph7)
+```
+ 
+ We first examined overall quality (**Figure 6**) and - as expected - price increases as overall quality increases. Examining year built (**Figure 7**), we observe that the the newer a home is, the higher its price, on average.
+
+```{r Saleprice distribution home type, message=FALSE, warning=FALSE, echo=FALSE, out.width="800px", out.height="800px"}
+ ggplotly(AmesHousing %>%
+  ggplot(aes(fct_rev(fct_reorder(home_type, saleprice)), saleprice)) +
+    scale_fill_viridis(discrete = TRUE, alpha=0.5) +
+    geom_jitter(color=rgb(0.1,0.4,0.5,0.7), size=0.4, alpha=0.5) +
+    geom_boxplot(fill = rgb(0.1,0.4,0.5,0.7)) +
+    theme(legend.position="none", plot.title = element_text(size=11)) +
+    ggtitle("Figure 9: Sale Price vs. Home Type") +
+    xlab("Home Type") +
+    ylab("Sale Price") +
+    scale_y_continuous(labels = dollar)+
+    theme(plot.title = element_text(hjust = 0.5), axis.text.x=element_text(angle=-90, hjust=0)))
+```
+ 
+ 
+In addition investigating the relationship between sale price with location, overall quality, and age of the house, we also examined at the relationship between sale price and home type. We find that 2 story homes built in the year 1946 or later have the highest median home prices (**Figure 8**). 
+
+```{r sale price distribution  kitchen qual, warning=FALSE, message= FALSE, echo=FALSE,out.width="800px", out.height="600px"}
+graph9<- ggplot(AmesHousing, aes(Kitchen.Qual, saleprice)) +
+  geom_point(stat="identity", color=rgb(0.1,0.4,0.5,0.7)) +
+  theme(legend.position = "none") +
+  xlab("Overall Quality (5 is Best)") +
+  ylab("Sale Price") +
+  scale_y_continuous(labels = dollar)+
+  ggtitle("Figure 10: Home Price By Kitchen Quality") +
+  geom_smooth(method = "lm", formula = y ~ poly(x, 2), aes(colour = "Quadratic fit"))
+
+
+graph10<-ggplot(lot_area.outlier.rm, aes(lot_area, saleprice)) + 
+  geom_point(stat="identity", color=rgb(0.1,0.4,0.5,0.7)) +
+  theme(legend.position = "none") +
+  xlab("Lot Area") +
+  ylab("Average Sale Price") +
+  scale_y_continuous(labels = dollar)+
+  ggtitle("Figure 11: Home Price By Lot Area") +
+  geom_smooth(method=lm)
+plot_grid(graph9, graph10)
+```
+
+
+**Figure 9** explores the relationship between kitchen quality and sale price.The higher the kitchen quality the higher the median sale price. This increase, however, is non-linear (but rather quadratic). From **Figure 10**, we can see that - as expected - there is a gradual positive relationship between lot area and sales price.
+
+
+
+# Methodology
+
+**Missing data:**
+
+We opted for removing any missing observations from our final data set that were used for variable selection and modeling. 
+
+**Modifying variable class:**  
+
+We decided to keep the quality variables selected as a continuous variable as opposed to switching it to a factor. We did so because changing it to a factor would have lead to us dropping the "Very Poor" or "1" factor level as this level only has around 4 observations. By keeping the variable continuous, we are able to keep these observations and so better predict the home prices of homes that fall under this category.
+
+**Model Selection:**
+
+We began our model selection by reducing the number of variables within our housing data set. We created a subset data set that included the variables we hypothesized would important predictors of sale price. 
+
+These variables include: 
+
+
+* `LotArea`: Lot size in square feet
+* `OverallQual`: Rates the overall material and finish of the house
+* `YearBuilt`: Original construction date
+* `Exterior1st`: Exterior covering on house
+* `HeatingQC`: Heating quality and condition
+* `Foundation`: Type of foundation
+* `TotRmsAbvGrd`: Total rooms above grade (does not include bathrooms)
+* `KitchenQual`: Kitchen quality
+* `BsmtFinType1`: Rating of basement finished area
+* `Neighborhood`: Physical locations within Ames city limits
+* `LandSlope`: Slope of property
+* `Street`: Type of road access to property
+* `HouseStyle`: Style of dwelling
+* `GarageQual`: Garage quality
+* `Fence`: Fence quality
+* `YrSold`: Year Sold (YYYY)
+
+
+We further included additional variables that will be utilized later in the report to create a renovation calculator.  
+
+* `FullBath`: Full bathrooms above grade
+* `RoofStyle`: Type of roof
+
+
+Using our subset, we ran 1) a subset selection, (2) forward stepwise selection and (3) a forward stepwise selection for our variable selection. The graphs below are graphs that plot the number of variables against the BIC value for our three methods of variable selection. 
+
+
+```{r Splitting into test/train , message=FALSE, warning=FALSE, echo=FALSE}
+
+AmesHousing_Short<-AmesHousing%>%
+    select(
+    full_bath_abv_grd,
+    tot_rms_abv_grd,
+    home_type,
+    overall_qual,
+    lot_area,
+    year_built,
+    Garage.Qual,
+    Exterior.1st,
+    Foundation,
+    Heating.QC,
+    Roof.Style,
+    Kitchen.Qual,
+    Neighborhood,
+    Fence,
+    Street,
+    Land.Slope,
+    full_bath_abv_grd,
+    Yr.Sold,
+    saleprice,
+    BsmtFin.Type.1)
+
+
+# Remove missing values
+AmesHousing_Short<-AmesHousing_Short[complete.cases(AmesHousing_Short), ]
+
+
+
+#splitting into training and testing data set 
+training <- AmesHousing_Short%>%
+  filter(Yr.Sold != 2010)
+
+testing <- AmesHousing_Short%>%
+  filter(Yr.Sold == 2010)
+
+
+
+```
+
+```{r best subset selection, cache = TRUE, message=FALSE, warning=FALSE, echo=FALSE}
+#Best subset selection
+regfit.subset <- regsubsets(saleprice~.,
+                data=training,
+                nbest = 1, 
+                nvmax = 7,
+                method="exhaustive", really.big = TRUE)
+
+```
+
+
+```{r best subset BIC plot, message=FALSE, warning=FALSE, echo=FALSE}
+regfit.subset_sum<-summary(regfit.subset)
+
+
+#Plot of BIC for the subsets
+num_variables<-seq(1,length(regfit.subset_sum$bic))
+#Note: Generates a sequence of numbers from 1 to the length of bic in lifexp.summary
+plot_BIC<-ggplot(data = data.frame(regfit.subset_sum$bic),
+                 aes(x=num_variables,y=regfit.subset_sum$bic))+
+  geom_line()+
+  geom_point(x=which.min(regfit.subset_sum$bic),
+             y=min(regfit.subset_sum$bic),aes(color="green"),
+             show.legend = FALSE)+
+  xlab("# Variables")+
+  ylab("BIC")+
+  ggtitle("Figure 11: Subset Selection") +
+  theme_bw()
+plot_BIC
+
+```
+
+
+
+```{r forward subset , message=FALSE, warning=FALSE, echo=FALSE}
+
+
+
+#`````````forward selection
+regfit.fwd=regsubsets(saleprice~.,
+                data=training,
+                nbest = 1, 
+                nvmax=7,
+                method="forward")
+
+regfit.fwd.sum<-summary(regfit.fwd)
+
+#Plot of BIC for the subsets
+num_variables_fwd<-seq(1,length(regfit.fwd.sum$bic))
+plot_BIC<-ggplot(data = data.frame(regfit.fwd.sum$bic),
+                 aes(x=num_variables_fwd,y=regfit.fwd.sum$bic))+
+  geom_line()+
+  geom_point(x=which.min(regfit.fwd.sum$bic),
+             y=min(regfit.fwd.sum$bic),aes(color="green"),
+             show.legend = FALSE)+
+  xlab("# Variables")+
+  ylab("BIC")+
+  ggtitle("Figure 12: Forward Stepwise Selection") +
+  theme_bw()
+
+plot_BIC
+# BIC selected best subset model
+#which.min(regfit.fwd.sum$bic)
+
+```
+
+```{r backward subset , message=FALSE, warning=FALSE, echo=FALSE}
+
+
+#backward Selection
+
+regfit.bwd=regsubsets(saleprice~.,
+                      data=training,
+                      nbest = 1, 
+                      nvmax=7,
+                      method="backward")
+
+regfit.bwd.sum<-summary(regfit.bwd)
+
+
+#plot of BIC for the subsets
+num_variables_bwd<-seq(1,length(regfit.bwd.sum$bic))
+plot_BIC<-ggplot(data = data.frame(regfit.bwd.sum$bic),
+                 aes(x=num_variables_bwd,y=regfit.bwd.sum$bic))+
+  geom_line()+
+  geom_point(x=which.min(regfit.bwd.sum$bic),
+             y=min(regfit.bwd.sum$bic),aes(color="green"),
+             show.legend = FALSE)+
+  xlab("# Variables")+
+  ylab("BIC")+
+    ggtitle("Figure 13: Backward Stepwise Selection") +
+  theme_bw()
+
+plot_BIC
+
+
+
+
+# BIC selected best subset model
+#which.min(regfit.bwd.sum$bic)
+```
+
+Across all variable selection method, the a model with 7 variables has the lowest bIC score. Comparing the variables included in a model with seven variables across the three selection methods, we see that they all share the same variables. 
+
+
+```{r, message=FALSE, warning=FALSE, echo=FALSE}
+knitr::kable(names(coef(regfit.subset, 7)), caption = "Subset Selection")
+knitr::kable(names(coef(regfit.fwd, 7)), caption = "Forward stepwise Selection")
+knitr::kable(names(coef(regfit.bwd, 7)), caption = "Backward stepwise Selection")
+
+```
+
+Following our variable selection analysis, we proceeded to use those variables to fit a GAM model and Linear model to help us predict sale price.  
+
+We began by creating a 10-fold CV error estimates for polynomial regression, cubic splines, and smoothing splines models. The graphs below show the results of the cross validation, allowing us to determine the model and degrees of freedom that best fit the relationship between our selected numerical variables and sale price. 
+
+
+```{r Functions for Model Selection, message=FALSE, warning=FALSE, echo=FALSE}
+# Function that trains a degree d polynomial on the training data and returns its prediction error on the test data. It is assumed that train and test are data frames, with 2 columns: first named x, the second named y. Output: The test MSE of the model
+polyTestErr <- function(dat, train, d) {
+  poly.fit <- lm(y ~ poly(x, degree = d), data = dat, subset = train)
+  preds <- predict(poly.fit, dat)[-train]
+  mean((dat$y[-train] - preds)^2)
+}
+
+cubicSplineTestErr <- function(dat, train, df) {
+  if(df >= 3) {
+    spline.fit <- lm(y ~ bs(x, df = df), data = dat, subset = train)
+    preds <- predict(spline.fit, dat)[-train]
+    mean((dat$y[-train] - preds)^2)
+  } else {
+    NA
+  }
+}
+
+smoothSplineTestErr <- function(dat, train, df) {
+  if(df > 1) {
+    spline.fit <- with(dat, smooth.spline(x[train], y[train], df = df))
+    preds <- predict(spline.fit, dat$x)$y[-train]
+    mean((dat$y[-train] - preds)^2)
+  } else {
+    NA
+  }
+}
+
+smoothCV <- function(x, y, K = 10, df.min = 1, df.max = 10) {
+  dat <- data.frame(x = x, y = y) #creates a data frame out the x and y vectors inputted
+  n <- length(y) # number of observations
+  
+  num.methods <- 3 #the number of method types
+  method.names <- c("poly", "cubic.spline", "smoothing.spline")
+  err.out <- data.frame(df = rep(df.min:df.max, each = num.methods),
+                        method = rep(method.names, df.max - df.min + 1))
+  
+  # Get a random permutation of the indexes
+  random.perm <- sample(n)
+  # break points for the folds.  If n is not evenly divisible by K,
+  # these may not be of exactly the same size.
+  fold.breaks <- round(seq(1,n+1, length.out = K + 1))
+  fold.start <- fold.breaks[1:K]
+  fold.end <- fold.breaks[2:(K+1)] - 1
+  fold.end[K] <- n # Fix the last endoint to equal n
+  fold.size <- fold.end - fold.start + 1 # num obs in each fold
+  
+  cv.err <- NULL
+  fold.err <- matrix(0, nrow = K, ncol = 3)
+  colnames(fold.err) <- c("poly", "cubic.spline", "smoothing.spline")
+  # Outer loop: Loop over degrees of freedom
+  # Inner loop: Iterate over the K folds
+  for(df in df.min:df.max) {
+    for(k in 1:K) {
+      test.idx <- fold.start[k]:fold.end[k]
+      train <- random.perm[-test.idx]
+      
+      # Calculate test error for the three models
+      poly.err <- polyTestErr(dat, train = train, d = df)
+      cubic.spline.err <- cubicSplineTestErr(dat, train = train, df = df)
+      smooth.spline.err <- smoothSplineTestErr(dat, train = train, df = df)
+      
+      # Store results for this fold
+      fold.err[k,] <- c(poly.err, cubic.spline.err, smooth.spline.err)
+#       print(fold.err[k,])
+    }
+    # Perform weighted averaging to calculate CV error estimate
+    # MSE estimates from each fold are weighted by the size of the fold
+    # If all folds are the same size, this is the same thing as the unweighted
+    # average of all of the MSE's
+    err.ave <- colSums(sweep(fold.err, MARGIN = 1, fold.size, FUN = "*") / n)
+    cv.err <- c(cv.err, err.ave)
+  }
+  err.out$cv.error <- cv.err
+  err.out
+}
+
+plot.smoothCV <- function(smoothcv.err, K, title.text = "", facet = FALSE,
+                          y.scale.factor = NULL) {
+
+  # Convert the method names
+  dat <- transform(smoothcv.err, 
+                   method = mapvalues(method,
+                                      c("poly", "cubic.spline", "smoothing.spline"),
+                                      c("Polynomial", "Cubic spline", "Smoothing Spline")
+                                      )
+                   )
+  
+  # Set axes labels
+  x.text <- "Degrees of Freedom"
+  y.text <- paste0(K, "-fold CV Error")
+  
+  # The ggplot "setting": data, axes, and color by method
+  p <- ggplot(data = dat, aes(x = df, y = cv.error, colour = method)) 
+  
+  # Overlay with line plots, data points, axes labels, and graph title
+  p <- p + geom_line() + geom_point() + xlab(x.text) + ylab(y.text) +
+          ggtitle(title.text)
+  
+  # Adjust the y axis range if y.scale.factor is specified
+  if(!is.null(y.scale.factor)) {
+    min.err <- min(dat$cv.error, na.rm = TRUE)
+    p <- p + ylim(min.err, y.scale.factor * min.err)
+  }
+  
+  # Show a separate plot per method if facet=TRUE
+  if(!facet) {
+    print(p)
+  } else {
+    print(p + facet_wrap("method"))
+  }
+}
+```
+
+```{r CV Plot LotArea, message=FALSE, warning=FALSE, echo=FALSE}
+cv.lot_area <- smoothCV(x = training$lot_area, 
+                    y = training$saleprice, 
+                    df.min = 1, 
+                    df.max = 10)
+plot.smoothCV(cv.lot_area, 
+              K = 10, 
+              title.text = "CV Error: saleprice ~ lot_area", 
+              y.scale.factor = 1.5)
+```
+
+A degree 2 smoothing spline appears to be the best model choice for lot area. It has the lowest CV error and the lowest has the most stable curve.
+
+```{r CV Plot Total Rooms Above Grade, message=FALSE, warning=FALSE, echo=FALSE}
+cv.tot_rms_abv_grd <- smoothCV(x = training$tot_rms_abv_grd, 
+                    y = training$saleprice, 
+                    df.min = 1, 
+                    df.max = 10)
+plot.smoothCV(cv.tot_rms_abv_grd, 
+              K = 10, 
+              title.text = "CV Error: saleprice ~ tot_rms_abv_grd", 
+              y.scale.factor = 1.4)
+```
+
+A degree 6 smoothing spline appears to be the best fit for the total rooms above grade variable. While a lower degree cubic spine is comparable, the cubic spline becomes more unstable at higher degrees.
+
+```{r CV Plot Overall Quality , message=FALSE, warning=FALSE, echo=FALSE}
+cv.overall_qual <- smoothCV(x = training$overall_qual,
+                    y = training$saleprice,
+                    df.min = 1,
+                    df.max = 8)
+plot.smoothCV(cv.overall_qual,
+              K = 10,
+              title.text = "CV Error: saleprice ~ overall_qual",
+              y.scale.factor = 1.3)
+```
+
+A degree 6 smoothing spline appears to be a good fit here, however other models appear to do comparably as well. 
+
+```{r CV Plot Kitchen Quality, message=FALSE, warning=FALSE, echo=FALSE}
+
+cv.Kitchen.Qual <- smoothCV(x = training$Kitchen.Qual, 
+                    y = training$saleprice, 
+                    df.min = 1, 
+                    df.max = 3)
+plot.smoothCV(cv.Kitchen.Qual, 
+              K = 10, 
+              title.text = "CV Error: saleprice ~ Kitchen.Qual", 
+              y.scale.factor = 1.1)
+```
+
+A quadratic polynomial appear to be the best fit for this model as it has the lowest error.
+
+```{r CV Plot Year Built, message=FALSE, warning=FALSE, echo=FALSE,}
+#Chosen Variables: lot_area, tot_rms_abv_grd, overall_qual, Kitchen.Qual, year_built, NeighborhoodNorthridge, Bsmt.QualEx
+cv.year_built <- smoothCV(x = training$year_built, 
+                    y = training$saleprice, 
+                    df.min = 1, 
+                    df.max = 10)
+plot.smoothCV(cv.year_built, 
+              K = 10, 
+              title.text = "CV Error: saleprice ~ year_built", 
+              y.scale.factor = 1.2)
+```
+
+A cubic spline with 8 degrees of freedom appears to be the best model in this case. Other models are close in CV error and are fairly stable, but the cubic spline model has the lowest error.
+
+
+
+```{r CV Plot Lot Area, message=FALSE, warning=FALSE, echo=FALSE}
+cv.bath.abv.grd <- smoothCV(x = training$full_bath_abv_grd, 
+                    y = training$full_bath_abv_grd, 
+                    df.min = 1, 
+                    df.max = 4)
+plot.smoothCV(cv.bath.abv.grd, 
+              K = 10, 
+              title.text = "CV Error: saleprice ~ Full Bath Above Grade", 
+              y.scale.factor = 30)
+```
+The plot suggest that model that has the lowest cv error is a smoothing spline with 4 degrees of freedom
+
+
+```{r, message=FALSE, warning=FALSE, echo=FALSE}
+
+gam.fit <- gam(saleprice ~ s(lot_area, 2) + 
+                 s(tot_rms_abv_grd, 6) + 
+                 s(overall_qual, 6) +  
+                 poly(Kitchen.Qual, 2) +
+                 bs(year_built, 8) +
+                 s(full_bath_abv_grd, 4) +
+                 Neighborhood + full_bath_abv_grd + 
+             Roof.Style + BsmtFin.Type.1,
+               data = training)
+
+```
+
+
+```{r, message=FALSE, warning=FALSE, echo=FALSE}
+
+# GAM Training Error
+
+gam.fit.sum <- summary(gam.fit)
+
+training.gam <- training[,c("tot_rms_abv_grd", "overall_qual", "lot_area", "year_built",  "Kitchen.Qual", "Neighborhood", "full_bath_abv_grd","Roof.Style", "BsmtFin.Type.1")]
+
+gam.preds.train <- predict.Gam(gam.fit, training.gam)
+
+
+```
+
+
+
+```{r, message=FALSE, warning=FALSE, echo=FALSE}
+
+# GAM Test Error
+
+
+testing.gam <- testing[,c("tot_rms_abv_grd", "overall_qual", "lot_area", "year_built","Kitchen.Qual", "Neighborhood", "full_bath_abv_grd","Roof.Style", "BsmtFin.Type.1")]
+
+
+gam.preds.test <- predict.Gam(gam.fit, testing.gam)
+
+rmse.gam <- sqrt(mean((testing$saleprice - gam.preds.test)^2))
+# rmse.gam
+
+mae.gam <- sum(abs(gam.preds.test-testing$saleprice))/nrow(testing)
+# mae.gam
+
+```
+
+
+```{r, message=FALSE, warning=FALSE, echo=FALSE}
+#https://towardsdatascience.com/metrics-to-understand-regression-models-in-plain-english-part-1-c902b2f4156f
+
+
+lm.fit  <- lm(saleprice ~ lot_area + Neighborhood + 
+            year_built + tot_rms_abv_grd +
+            overall_qual + 
+            Kitchen.Qual + full_bath_abv_grd + 
+             Roof.Style + BsmtFin.Type.1 , data = training)
+
+lm.predict <- predict(lm.fit, newdata = testing)
+
+rmse.lm <- sqrt(mean((lm.predict- testing$saleprice  )^2))
+# rmse.lm
+
+mae.lm <- sum(abs(lm.predict-testing$saleprice ))/nrow(testing)
+# mae.lm
+
+
+
+
+```
+
+
+
+| model         | RMSE                   | MAE                  |
+| ------------- |:----------------------:| --------------------:|
+| linear        | `r round(rmse.lm, 2)`  | `r round(mae.lm, 2)` |
+| gam           | `r round(rmse.gam, 2)` | `r round(mae.gam, 2)`|
+
+
+Our hypothesis on model selection was correct. Examining RMSE and MAE for both the linear and gam models[2] we can observe that for both metrics the gam model out performs the linear model. 
+
+# Discussion
+
+```{r Gam Summary, message=FALSE, warning=FALSE, echo=FALSE}
+
+gam.fit.sum
+
+```
+
+Based on the summary output for the `gam` model, all of our variables are statistically significant at least to the p=.01 which suggests that these variables are relevant predictors for saleprice. This goes in line with part of out hypothesis that `lot_area` and `overall_qual` would be a statically significant predictors of `saleprice`. Contrary to our hypothesis, `home_type` and `overall_qual` are not statically significant predictors of `saleprice`.
+
+Though the gam model had both a lower `RMSE` and `MAE` than the linear model and also better accommodates the flexibility in predictors, it is substantially more difficult to interpret the impact of each predictor on sale price. However, we do know based on the ANOVA parametric and ANOVA nonparametric output in the summary which variables are statistically significant in the model. 
+
+Below is a plot of the smooth variables.
+
+```{r Gam Plots, out.width="800px", out.height="800px", message=FALSE, warning=FALSE, echo=FALSE}
+
+par(mfrow = c(4,2))
+plot(gam.fit, se = TRUE, col = 'darkgreen', lwd = 2)
+```
+
+
+** **
+
+```{r,message=FALSE, warning=FALSE, echo=FALSE}
+Mape_neighborhood<- testing %>% 
+  mutate(SalePriceHat = predict.Gam(gam.fit, newdata = testing))%>%
+  mutate(MAPE = (abs(SalePriceHat-saleprice))/saleprice)%>%
+  group_by(Neighborhood)%>%
+  summarize_at(c("MAPE"), mean)%>%
+  arrange(MAPE)
+
+kable(Mape_neighborhood)
+```
+
+Based on the calculating the Mean Absolute Precentage Error (MAPE), we found that our model is better at predicting some neighborhoods like Northpark Villa (0.027) and South & West Iowa State University (0.053), but worse at predicting sale price for other neighborhoods like Iowa DOT and Rail Road (0.266) and Bloomington Heights (0.193).
+
+## Renovation Calculator 
+
+Our goal was to create a baseline that would be the worst most common house. We calculated this approximation by taking the lowest number of full baths, the lowest kitchen quality, an unfinished basement, the mode of all the other variables in our dataset.  
+
+To determine the cost of improvements in  full baths above grade, kitchen, roof, and basement we created a base sale price for comparison. This sale price for our base comparison consists of the following characteristics: 
+
+
+* 6 rooms above grade 
+* overall quality rating of 5
+* lot area of 9,600 square feet 
+* built in 2004
+* kitchen quality rating of 1
+* 0 full baths above grade 
+* gable roof style 
+* located in North Ames 
+* unfinished basement 
+
+
+Based on our renovation calculator: 
+
+
+```{r Mode Function, message=FALSE, warning=FALSE, echo=FALSE}
+
+#function to obtain the mode for each variable in gam model
+Mode <- function(x) {
+  ux <- unique(x)
+  ux[which.max(tabulate(match(x, ux)))]
+}
+```
+
+
+```{r Most Common House worst house, message=FALSE, warning=FALSE, echo=FALSE}
+#These are the modes for each variable
+tot_rms_abv_grd <- Mode(AmesHousing_Short$tot_rms_abv_grd)
+
+overall_qual <- Mode(AmesHousing_Short$overall_qual)
+
+lot_area <- Mode(AmesHousing_Short$lot_area)
+
+year_built <- Mode(AmesHousing_Short$year_built)
+
+Kitchen.Qual <- min(AmesHousing_Short$Kitchen.Qual)
+
+Neighborhood <- Mode(AmesHousing_Short$Neighborhood)
+
+full_bath_abv_grd <- min(AmesHousing_Short$full_bath_abv_grd)
+
+Roof.Style <- Mode(AmesHousing_Short$Roof.Style)
+
+BsmtFin.Type.1 <- "Unf"
+
+#Creates a data frame of the mode that we are considering to be the approximation of the "most common" house in the data set
+test.df <- data.frame(tot_rms_abv_grd, overall_qual, lot_area, year_built, Kitchen.Qual, Neighborhood, full_bath_abv_grd, Roof.Style, BsmtFin.Type.1)
+
+#We run the gam on this "most common" to determine what the sale price would be
+price.comHouse <- predict.Gam(gam.fit, test.df)
+
+```
+
+```{r Roof style Calc, message=FALSE, warning=FALSE, echo=FALSE}
+
+
+#List of all the roof types NOT including the roof type for the "most common" house
+roofstyle.list <- c("Flat", "Gambrel", "Hip", "Mansard", "Shed")
+
+#Empty list to contain the rows to contain values where each 10 values in the list represent a house with a different roof type but the same other "most common" house characters obtained through the for loop
+roof.lst <- c()
+for  (i in roofstyle.list){
+  tot_rms_abv_grd <- Mode(AmesHousing_Short$tot_rms_abv_grd)
+  overall_qual <- Mode(AmesHousing_Short$overall_qual)
+  lot_area <- Mode(AmesHousing_Short$lot_area)
+  year_built <- Mode(AmesHousing_Short$year_built)
+  Kitchen.Qual <- Mode(AmesHousing_Short$Kitchen.Qual)
+  Neighborhood <- Mode(AmesHousing_Short$Neighborhood)
+  full_bath_abv_grd <- Mode(AmesHousing_Short$full_bath_abv_grd)
+  Roof.Style <- c(i)
+  BsmtFin.Type.1 <- Mode(AmesHousing_Short$BsmtFin.Type.1)
+  list.cat <-c(tot_rms_abv_grd, overall_qual, lot_area, year_built, Kitchen.Qual, Neighborhood, full_bath_abv_grd, Roof.Style, BsmtFin.Type.1)
+  roof.lst <- c(roof.lst, list.cat)
+
+
+}
+
+#Create data fram from that least where each row is a house with the "most common" house characteristic expect changing roof type
+roof.df <- data.frame()
+roof.df<-rbind(roof.df, roof.lst[1:9], roof.lst[10:18], roof.lst[19:27],roof.lst[28:36], roof.lst[37:45])
+
+#Creates a list of the prices if we change the roof type in the "most common" house
+roof.prices <- c()
+for (i in 1:5){
+  roof.prices[i] <- predict.Gam(gam.fit, as.vector(roof.df[i,]))
+}
+
+
+# predict.Gam(gam.fit, as.vector(roof.df[1,]))
+
+
+diff.roof <- roof.prices[1] - price.comHouse
+#diff
+
+```
+* If you change your roof type from the most common roof type to any other roof type, on average, your house will go down $`r abs(diff.roof)`.
+
+
+
+```{r Basement Finish Type Calc, message=FALSE, warning=FALSE, echo=FALSE}
+
+#List of all the basement finish types NOT including the basement finish type for the "most common" house
+basement.finish.list <- c("ALQ", "BLQ",  "Rec", "LwQ", "GLQ")
+
+#Empty list to contain the rows to contain values where each 10 values in the list represent a house with a different basement finish type but the same other "most common" house characters obtained through the for loop
+basement.lst <- c()
+for  (i in basement.finish.list){
+  tot_rms_abv_grd <- Mode(AmesHousing_Short$tot_rms_abv_grd)
+  overall_qual <- Mode(AmesHousing_Short$overall_qual)
+  lot_area <- Mode(AmesHousing_Short$lot_area)
+  year_built <- Mode(AmesHousing_Short$year_built)
+  Kitchen.Qual <- Mode(AmesHousing_Short$Kitchen.Qual)
+  Neighborhood <- Mode(AmesHousing_Short$Neighborhood)
+  full_bath_abv_grd <- Mode(AmesHousing_Short$full_bath_abv_grd)
+  Roof.Style <- Mode(AmesHousing_Short$Roof.Style)
+  BsmtFin.Type.1 <- c(i)
+  list.cat <-c(tot_rms_abv_grd, overall_qual, lot_area, year_built, Kitchen.Qual, Neighborhood, full_bath_abv_grd, Roof.Style, BsmtFin.Type.1)
+  basement.lst <- c(basement.lst, list.cat)
+}
+
+#Create data fram from that least where each row is a house with the "most common" house characteristic expect changing roof type
+basement.df <- data.frame()
+basement.df<-rbind(basement.df, basement.lst[1:9], basement.lst[10:18], basement.lst[19:27],basement.lst[28:36], basement.lst[37:45], basement.lst[46:54])
+
+
+#Creates a list of the prices if we change the roof type in the "most common" house
+basement.prices <- c()
+for (i in 1:5){
+  basement.prices[i] <- predict.Gam(gam.fit, as.vector(basement.df[i,]))
+}
+
+diff.basement <- basement.prices[1] - price.comHouse
+
+
+```
+
+* If you you go from an unfinished basement to any type of finished basement, our model predicts that on average, your house value will go down by $`r abs(diff.basement)`. 
+
+
+```{r kitchen quality Type Calc, message=FALSE, warning=FALSE, echo=FALSE}
+
+#List of all the basement finish types NOT including the basement finish type for the "most common" house
+kitchen.list <- c(3, 2, 4, 5)
+
+
+#Empty list to contain the rows to contain values where each 10 values in the list represent a house with a different basement finish type but the same other "most common" house characters obtained through the for loop
+kitchen.lst <- c()
+for  (i in kitchen.list){
+  tot_rms_abv_grd <- Mode(AmesHousing_Short$tot_rms_abv_grd)
+  overall_qual <- Mode(AmesHousing_Short$overall_qual)
+  lot_area <- Mode(AmesHousing_Short$lot_area)
+  year_built <- Mode(AmesHousing_Short$year_built)
+  Kitchen.Qual <- c(i)
+  Neighborhood <- Mode(AmesHousing_Short$Neighborhood)
+  full_bath_abv_grd <- Mode(AmesHousing_Short$full_bath_abv_grd)
+  Roof.Style <- Mode(AmesHousing_Short$Roof.Style)
+  BsmtFin.Type.1 <- Mode(AmesHousing_Short$BsmtFin.Type.1)
+  list.cat <-c(tot_rms_abv_grd, overall_qual, lot_area, year_built, Kitchen.Qual, Neighborhood, full_bath_abv_grd, Roof.Style, BsmtFin.Type.1)
+  kitchen.lst <- c(kitchen.lst, list.cat)
+
+
+}
+
+#Create data fram from that least where each row is a house with the "most common" house characteristic expect changing roof type
+kitchen.df <- data.frame()
+kitchen.df<-rbind(kitchen.df, kitchen.lst[1:9], kitchen.lst[10:18], kitchen.lst[19:27],kitchen.lst[28:36], kitchen.lst[37:45], kitchen.lst[46:54])
+
+
+#Creates a list of the prices if we change the roof type in the "most common" house
+kitchen.prices <- c()
+for (i in 1:4){
+  kitchen.prices[i] <- predict.Gam(gam.fit, as.vector(kitchen.df[i,]))
+}
+
+diff.kitchen <- kitchen.prices[1] - price.comHouse
+
+```
+
+* If you you make any upgrade to the kitchen from a kitchen with a quality 0- on average- your house value will go up by $`r abs(diff.kitchen)`.
+
+
+```{r # full bath above grade Calc, message=FALSE, warning=FALSE, echo=FALSE}
+
+#List of all the basement finish types NOT including the basement finish type for the "most common" house
+bath.list <- c(1, 2, 4, 3)
+
+
+
+#Empty list to contain the rows to contain values where each 10 values in the list represent a house with a different basement finish type but the same other "most common" house characters obtained through the for loop
+bath.lst <- c()
+for  (i in bath.list){
+  tot_rms_abv_grd <- Mode(AmesHousing_Short$tot_rms_abv_grd)
+  overall_qual <- Mode(AmesHousing_Short$overall_qual)
+  lot_area <- Mode(AmesHousing_Short$lot_area)
+  year_built <- Mode(AmesHousing_Short$year_built)
+  Kitchen.Qual <- Mode(AmesHousing_Short$Kitchen.Qual)
+  Neighborhood <- Mode(AmesHousing_Short$Neighborhood)
+  full_bath_abv_grd <- c(i)
+  Roof.Style <- Mode(AmesHousing_Short$Roof.Style)
+  BsmtFin.Type.1 <- Mode(AmesHousing_Short$BsmtFin.Type.1)
+  list.cat <-c(tot_rms_abv_grd, overall_qual, lot_area, year_built, Kitchen.Qual, Neighborhood, full_bath_abv_grd, Roof.Style, BsmtFin.Type.1)
+  bath.lst <- c(bath.lst, list.cat)
+
+
+}
+
+#Create data fram from that least where each row is a house with the "most common" house characteristic expect changing roof type
+bath.df <- data.frame()
+bath.df<-rbind(bath.df, bath.lst[1:9], bath.lst[10:18], bath.lst[19:27],bath.lst[28:36], bath.lst[37:45], bath.lst[46:54])
+
+
+#Creates a list of the prices if we change the roof type in the "most common" house
+bath.prices <- c()
+for (i in 1:4){
+  bath.prices[i] <- predict.Gam(gam.fit, as.vector(bath.df[i,]))
+}
+
+
+diff.bathroom <- bath.prices[1] - price.comHouse
+
+```
+
+* If you you make any number of full bathrooms above grade (when you started with zero) - on average- your house value will go up by $`r abs(diff.bathroom)`.
+
+
+```{r Renovation Calculator, message=FALSE, warning=FALSE, echo=FALSE}
+#Pull the difference from each renovation calc variable and apply to a random house data set
+
+
+#Lowest Quality Kitchen
+lq.kitchen.df <- testing %>%
+  filter(Kitchen.Qual==1) %>%
+  mutate(New_Saleprice=saleprice+diff.kitchen) %>%
+  select(saleprice, New_Saleprice)
+
+#No Bathrooms
+lq.bathroom.df <- testing %>%
+  filter(full_bath_abv_grd==0) %>%
+  mutate(New_Saleprice=saleprice+diff.bathroom)%>%
+  select(saleprice, New_Saleprice)
+
+#Unfinished Basement
+lq.basement.df <- testing %>%
+  filter(BsmtFin.Type.1=="Unf") %>%
+  mutate(New_Saleprice=saleprice+diff.basement)%>%
+  select(saleprice, New_Saleprice)
+
+#Roof
+lq.roof.df <- testing %>%
+  filter(Roof.Style=="Gable") %>%
+  mutate(New_Saleprice=saleprice+diff.roof)%>%
+  select(saleprice, New_Saleprice)
+
+```
+
+
+We then used our estimated costs from our renovation calculator to predict a new sale price for 2010 houses. We created four subsets dataframes:  housing with the lowest kitchen quality, unfinished basement, gable roof style and 0 bathroom. 
+
+The predicted sales prices are displayed below. 
+```{r New SalePrice After Renovation for Evaluation}
+lq.kitchen.df
+
+lq.bathroom.df
+
+head(lq.basement.df)
+
+head(lq.roof.df)
+
+```
+
+
+
+**Particular Home Improvement Recommendations**
+
+1. If you have the lowest quality kitchen, you should renovate it and upgrade to any better quality kitchen
+
+2. If you have zero full bathrooms above grade, you should renovate and add at least 1 to get an increase of `diff.bathroom` on average
+
+3. If you you have Gable roof, you should not renovate and choose roof type
+
+
+
+# Limitations
+
+**Lasso:**
+We were unable to calculate the CV error associated with the lasso variable selection method. As our prior experience with lasso was limited to working with primarily quantitative variables, we were stuck when we got errors when trying to calculate the error from the qualitative variables selected by lasso. While we are confident that this is possible to do, we were simply unfamiliar with the precise syntax. However, several of the variables that lasso recommended were also recommended by our other variable selection methods such as lot area and total rooms above grade.
+
+**GAM:**
+We had trouble figuring out how to use GAM to predict the price changes caused by a specific renovation on average. For example, if a client asked us how much the price of home would change on average if we added an additional bathroom, then we were unsure how exactly to estimate this (though we understood how to do this with a normal linear regression). On the other hand, we felt that GAM could be put to better use at predicting renovation price changes when a client gave us all the specifications of a particular house and then wanted to change one part of it (we would simply put all the information into a single row and run the predict.Gam function on it).
+
+**Renovation Calculator:**
+Our renovator calculator does seem to at least pick up on the fact that improving the kitchen or going from 0 to any number of full bathrooms above grade will add to your sale price value. However, our calculator predicts that finishing an unfinished basement in any capacity will decrease the sale price on average, which is unusual. This might suggest that the gam model doesn’t predict changes in basement type very well.
+
+**Chosen Subset of Variables:**
+When attempting to determine a the variables that were the best predictors of sale price with the `fwd`, `bwd`, and `subset` methods, using a `nvmax > 7` would cause R to restart so we had could only choose the best subset up to 7 variables.
+
+**Sale Price:**
+It is important to note that the sale price is right skewed which does impact the performance of our model on data outside of Ames Housing data set. We did not implement any modifications to address the skew.
+
+
+# References
+
+[1] https://stackoverflow.com/questions/5208679/order-bars-in-ggplot2-bar-graph
+
+
+[2] https://towardsdatascience.com/metrics-to-understand-regression-models-in-plain-english-part-1-c902b2f4156f
+
